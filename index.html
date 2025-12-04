@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - Hospital Management System</title>
+    <link rel="stylesheet" href="css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="container navbar-content">
+            <a href="index.html" class="navbar-brand">Hospital Management</a>
+            <ul class="navbar-menu">
+                <li><a href="index.html">Dashboard</a></li>
+                <li><a href="patients.html">Patients</a></li>
+                <li><a href="doctors.html">Doctors</a></li>
+                <li><a href="appointments.html">Appointments</a></li>
+                <li><a href="billing.html">Billing</a></li>
+                <li><a href="medicines.html">Medicines</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            <!-- Page Header -->
+            <div class="page-header">
+                <h1 class="page-title">Dashboard</h1>
+                <p class="page-subtitle">Welcome to Hospital Management System</p>
+            </div>
+
+            <!-- Statistics Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-label">Total Patients</div>
+                    <div class="stat-value" id="totalPatients">0</div>
+                    <div class="stat-description">Registered patients</div>
+                </div>
+                <div class="stat-card green">
+                    <div class="stat-label">Today's Appointments</div>
+                    <div class="stat-value" id="todayAppointments">0</div>
+                    <div class="stat-description">Scheduled for today</div>
+                </div>
+                <div class="stat-card orange">
+                    <div class="stat-label">Pending Bills</div>
+                    <div class="stat-value" id="pendingBills">0</div>
+                    <div class="stat-description">Awaiting payment</div>
+                </div>
+                <div class="stat-card red">
+                    <div class="stat-label">Low Stock Items</div>
+                    <div class="stat-value" id="lowStockCount">0</div>
+                    <div class="stat-description">Medicine inventory</div>
+                </div>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1.5rem; margin-bottom: 1.5rem;">
+                <!-- Today's Appointments -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Today's Appointments</h2>
+                        <a href="appointments.html" class="btn btn-sm btn-primary">View All</a>
+                    </div>
+                    <div class="card-body">
+                        <div id="todayAppointmentsList">
+                            <div class="spinner"></div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Pending Bills -->
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Pending Payments</h2>
+                        <a href="billing.html" class="btn btn-sm btn-warning">View All</a>
+                    </div>
+                    <div class="card-body">
+                        <div id="pendingBillsList">
+                            <div class="spinner"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Charts -->
+            <div style="display: grid; grid-template-columns: 1fr; gap: 1.5rem;">
+                <div class="card">
+                    <div class="card-header">
+                        <h2 class="card-title">Appointment Statistics</h2>
+                    </div>
+                    <div class="card-body">
+                        <canvas id="appointmentsChart" height="80"></canvas>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <script src="js/api.js"></script>
+    <script>
+        // Load Dashboard Data
+        async function loadDashboard() {
+            try {
+                // Load statistics
+                const [patients, todayAppts, pending, lowStock] = await Promise.all([
+                    PatientAPI.getAll({ limit: 1 }),
+                    AppointmentAPI.getToday(),
+                    BillingAPI.getPending(),
+                    MedicineAPI.getLowStock()
+                ]);
+
+                document.getElementById('totalPatients').textContent = 
+                    patients.pagination?.total || 0;
+                document.getElementById('todayAppointments').textContent = 
+                    todayAppts.data?.length || 0;
+                document.getElementById('pendingBills').textContent = 
+                    pending.data?.length || 0;
+                document.getElementById('lowStockCount').textContent = 
+                    lowStock.count || 0;
+
+                // Load today's appointments
+                loadTodayAppointments(todayAppts.data);
+
+                // Load pending bills
+                loadPendingBills(pending.data);
+
+                // Load chart data
+                loadChart();
+            } catch (error) {
+                showError('Failed to load dashboard data: ' + error.message);
+            }
+        }
+
+        function loadTodayAppointments(appointments) {
+            const container = document.getElementById('todayAppointmentsList');
+            
+            if (!appointments || appointments.length === 0) {
+                container.innerHTML = '<p class="text-secondary">No appointments today</p>';
+                return;
+            }
+
+            container.innerHTML = appointments.slice(0, 5).map(apt => `
+                <div style="padding: 0.75rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong>${apt.patient_name}</strong><br>
+                        <small class="text-secondary">
+                            Dr. ${apt.doctor_name} • ${formatTime(apt.appointment_time)}
+                        </small>
+                    </div>
+                    <span class="badge badge-${apt.status === 'Completed' ? 'success' : 'info'}">
+                        ${apt.status}
+                    </span>
+                </div>
+            `).join('');
+        }
+
+        function loadPendingBills(bills) {
+            const container = document.getElementById('pendingBillsList');
+            
+            if (!bills || bills.length === 0) {
+                container.innerHTML = '<p class="text-secondary">No pending bills</p>';
+                return;
+            }
+
+            container.innerHTML = bills.slice(0, 5).map(bill => `
+                <div style="padding: 0.75rem; border-bottom: 1px solid var(--border-color); display: flex; justify-content: space-between; align-items: center;">
+                    <div>
+                        <strong>${bill.patient_name}</strong><br>
+                        <small class="text-secondary">${bill.days_pending} days pending</small>
+                    </div>
+                    <strong class="text-primary">${formatCurrency(bill.total_amount)}</strong>
+                </div>
+            `).join('');
+        }
+
+        async function loadChart() {
+            try {
+                // Get last 7 days of appointment data
+                const days = [];
+                const counts = [];
+                
+                for (let i = 6; i >= 0; i--) {
+                    const date = new Date();
+                    date.setDate(date.getDate() - i);
+                    const dateStr = date.toISOString().split('T')[0];
+                    
+                    const summary = await AppointmentAPI.getDailySummary(dateStr);
+                    days.push(date.toLocaleDateString('en-IN', { month: 'short', day: 'numeric' }));
+                    counts.push(summary.data?.total_appointments || 0);
+                }
+
+                const ctx = document.getElementById('appointmentsChart');
+                new Chart(ctx, {
+                    type: 'line',
+                    data: {
+                        labels: days,
+                        datasets: [{
+                            label: 'Appointments',
+                            data: counts,
+                            borderColor: '#2563eb',
+                            backgroundColor: 'rgba(37, 99, 235, 0.1)',
+                            tension: 0.4,
+                            fill: true
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: true,
+                        plugins: {
+                            legend: {
+                                display: false
+                            }
+                        },
+                        scales: {
+                            y: {
+                                beginAtZero: true,
+                                ticks: {
+                                    stepSize: 1
+                                }
+                            }
+                        }
+                    }
+                });
+            } catch (error) {
+                console.error('Failed to load chart:', error);
+            }
+        }
+
+        // Initialize dashboard
+        document.addEventListener('DOMContentLoaded', loadDashboard);
+    </script>
+</body>
+</html>

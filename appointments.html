@@ -1,0 +1,281 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Appointments - Hospital Management System</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="container navbar-content">
+            <a href="index.html" class="navbar-brand">Hospital Management</a>
+            <ul class="navbar-menu">
+                <li><a href="index.html">Dashboard</a></li>
+                <li><a href="patients.html">Patients</a></li>
+                <li><a href="doctors.html">Doctors</a></li>
+                <li><a href="appointments.html">Appointments</a></li>
+                <li><a href="billing.html">Billing</a></li>
+                <li><a href="medicines.html">Medicines</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            <!-- Page Header -->
+            <div class="page-header flex-between">
+                <div>
+                    <h1 class="page-title">Appointment Management</h1>
+                    <p class="page-subtitle">Schedule and manage appointments</p>
+                </div>
+                <button class="btn btn-primary" onclick="showAddModal()">
+                    + Book New Appointment
+                </button>
+            </div>
+
+            <!-- Appointments Table -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">All Appointments</h2>
+                </div>
+                <div class="card-body">
+                    <div class="table-container">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>Patient</th>
+                                    <th>Doctor</th>
+                                    <th>Date</th>
+                                    <th>Time</th>
+                                    <th>Status</th>
+                                    <th>Notes</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="appointmentsTable">
+                                <tr>
+                                    <td colspan="8" class="text-center">
+                                        <div class="spinner"></div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Add/Edit Appointment Modal -->
+    <div id="appointmentModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title" id="modalTitle">Book New Appointment</h2>
+                <button class="modal-close" onclick="closeModal()">&times;</button>
+            </div>
+            <form id="appointmentForm" onsubmit="handleSubmit(event)">
+                <div class="form-group">
+                    <label class="form-label">Patient *</label>
+                    <select name="patient_id" id="patientSelect" class="form-control form-select" required>
+                        <option value="">Loading patients...</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Doctor *</label>
+                    <select name="doctor_id" id="doctorSelect" class="form-control form-select" required>
+                        <option value="">Loading doctors...</option>
+                    </select>
+                </div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem;">
+                    <div class="form-group">
+                        <label class="form-label">Date *</label>
+                        <input type="date" name="appointment_date" class="form-control" required>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Time *</label>
+                        <input type="time" name="appointment_time" class="form-control" required>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Status *</label>
+                    <select name="status" class="form-control form-select" required>
+                        <option value="Scheduled">Scheduled</option>
+                        <option value="Completed">Completed</option>
+                        <option value="Cancelled">Cancelled</option>
+                        <option value="No-Show">No-Show</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Notes</label>
+                    <textarea name="notes" class="form-control" rows="3"></textarea>
+                </div>
+                <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                    <button type="button" class="btn btn-secondary" onclick="closeModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Save Appointment</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script>
+        let currentAppointmentId = null;
+
+        // Load appointments
+        async function loadAppointments() {
+            try {
+                const response = await AppointmentAPI.getAll();
+                const tbody = document.getElementById('appointmentsTable');
+
+                if (!response.data || response.data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="8" class="text-center">No appointments found</td></tr>';
+                    return;
+                }
+
+                tbody.innerHTML = response.data.map(apt => `
+                    <tr>
+                        <td>${apt.appointment_id}</td>
+                        <td>${apt.patient_name || 'N/A'}</td>
+                        <td>${apt.doctor_name || 'N/A'}</td>
+                        <td>${formatDate(apt.appointment_date)}</td>
+                        <td>${apt.appointment_time}</td>
+                        <td><span class="badge ${getStatusBadge(apt.status)}">${apt.status}</span></td>
+                        <td>${apt.notes || '-'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="editAppointment(${apt.appointment_id})">Edit</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteAppointment(${apt.appointment_id})">Cancel</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                showError('Failed to load appointments: ' + error.message);
+            }
+        }
+
+        // Load patients and doctors for dropdowns
+        async function loadDropdowns() {
+            try {
+                const [patientsRes, doctorsRes] = await Promise.all([
+                    PatientAPI.getAll(),
+                    DoctorAPI.getAll()
+                ]);
+
+                const patientSelect = document.getElementById('patientSelect');
+                patientSelect.innerHTML = '<option value="">Select Patient</option>' +
+                    patientsRes.data.map(p => `<option value="${p.patient_id}">${p.name}</option>`).join('');
+
+                const doctorSelect = document.getElementById('doctorSelect');
+                doctorSelect.innerHTML = '<option value="">Select Doctor</option>' +
+                    doctorsRes.data.map(d => `<option value="${d.doctor_id}">${d.name} - ${d.specialization}</option>`).join('');
+            } catch (error) {
+                showError('Failed to load dropdown data: ' + error.message);
+            }
+        }
+
+        // Get status badge class
+        function getStatusBadge(status) {
+            switch (status) {
+                case 'Scheduled': return 'badge-primary';
+                case 'Completed': return 'badge-success';
+                case 'Cancelled': return 'badge-danger';
+                case 'No-Show': return 'badge-warning';
+                default: return 'badge-secondary';
+            }
+        }
+
+        // Show add modal
+        function showAddModal() {
+            currentAppointmentId = null;
+            document.getElementById('modalTitle').textContent = 'Book New Appointment';
+            document.getElementById('appointmentForm').reset();
+            document.getElementById('appointmentModal').classList.add('active');
+        }
+
+        // Edit appointment
+        async function editAppointment(id) {
+            try {
+                const response = await AppointmentAPI.getById(id);
+                const apt = response.data;
+
+                currentAppointmentId = id;
+                document.getElementById('modalTitle').textContent = 'Edit Appointment';
+
+                const form = document.getElementById('appointmentForm');
+                form.patient_id.value = apt.patient_id;
+                form.doctor_id.value = apt.doctor_id;
+                form.appointment_date.value = apt.appointment_date.split('T')[0];
+                form.appointment_time.value = apt.appointment_time;
+                form.status.value = apt.status;
+                form.notes.value = apt.notes || '';
+
+                document.getElementById('appointmentModal').classList.add('active');
+            } catch (error) {
+                showError('Failed to load appointment data: ' + error.message);
+            }
+        }
+
+        // Delete appointment
+        async function deleteAppointment(id) {
+            if (!confirmAction('Are you sure you want to cancel this appointment?')) {
+                return;
+            }
+
+            try {
+                await AppointmentAPI.delete(id);
+                showSuccess('Appointment cancelled successfully');
+                loadAppointments();
+            } catch (error) {
+                showError('Failed to cancel appointment: ' + error.message);
+            }
+        }
+
+        // Handle form submit
+        async function handleSubmit(event) {
+            event.preventDefault();
+
+            const formData = new FormData(event.target);
+            const data = Object.fromEntries(formData.entries());
+
+            try {
+                if (currentAppointmentId) {
+                    await AppointmentAPI.update(currentAppointmentId, data);
+                    showSuccess('Appointment updated successfully');
+                } else {
+                    await AppointmentAPI.create(data);
+                    showSuccess('Appointment booked successfully');
+                }
+
+                closeModal();
+                loadAppointments();
+            } catch (error) {
+                showError('Failed to save appointment: ' + error.message);
+            }
+        }
+
+        // Close modal
+        function closeModal() {
+            document.getElementById('appointmentModal').classList.remove('active');
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadAppointments();
+            loadDropdowns();
+
+            // Close modal on outside click
+            document.getElementById('appointmentModal').addEventListener('click', (e) => {
+                if (e.target.classList.contains('modal')) {
+                    closeModal();
+                }
+            });
+        });
+    </script>
+</body>
+
+</html>

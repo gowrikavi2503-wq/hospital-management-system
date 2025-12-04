@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Billing - Hospital Management System</title>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+
+<body>
+    <!-- Navigation Bar -->
+    <nav class="navbar">
+        <div class="container navbar-content">
+            <a href="index.html" class="navbar-brand">Hospital Management</a>
+            <ul class="navbar-menu">
+                <li><a href="index.html">Dashboard</a></li>
+                <li><a href="patients.html">Patients</a></li>
+                <li><a href="doctors.html">Doctors</a></li>
+                <li><a href="appointments.html">Appointments</a></li>
+                <li><a href="billing.html">Billing</a></li>
+                <li><a href="medicines.html">Medicines</a></li>
+            </ul>
+        </div>
+    </nav>
+
+    <!-- Main Content -->
+    <main class="main-content">
+        <div class="container">
+            <!-- Page Header -->
+            <div class="page-header flex-between">
+                <div>
+                    <h1 class="page-title">Billing Management</h1>
+                    <p class="page-subtitle">Manage bills and payments</p>
+                </div>
+                <button class="btn btn-primary" onclick="showGenerateModal()">
+                    + Generate Bill
+                </button>
+            </div>
+
+            <!-- Stats Cards -->
+            <div class="stats-grid">
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">💰
+                    </div>
+                    <div class="stat-details">
+                        <div class="stat-value" id="totalRevenue">₹0</div>
+                        <div class="stat-label">Total Revenue</div>
+                    </div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-icon" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);">⏳
+                    </div>
+                    <div class="stat-details">
+                        <div class="stat-value" id="pendingAmount">₹0</div>
+                        <div class="stat-label">Pending Payments</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bills Table -->
+            <div class="card">
+                <div class="card-header">
+                    <h2 class="card-title">All Bills</h2>
+                </div>
+                <div class="card-body">
+                    <div class="table-container">
+                        <table class="table">
+                            <thead>
+                                <tr>
+                                    <th>Bill ID</th>
+                                    <th>Patient</th>
+                                    <th>Amount</th>
+                                    <th>Payment Status</th>
+                                    <th>Payment Date</th>
+                                    <th>Discharge Date</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody id="billsTable">
+                                <tr>
+                                    <td colspan="7" class="text-center">
+                                        <div class="spinner"></div>
+                                    </td>
+                                </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <!-- Generate Bill Modal -->
+    <div id="generateModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Generate Bill</h2>
+                <button class="modal-close" onclick="closeGenerateModal()">&times;</button>
+            </div>
+            <form id="generateForm" onsubmit="handleGenerate(event)">
+                <div class="form-group">
+                    <label class="form-label">Select Appointment *</label>
+                    <select name="appointment_id" id="appointmentSelect" class="form-control form-select" required>
+                        <option value="">Loading appointments...</option>
+                    </select>
+                </div>
+                <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                    <button type="button" class="btn btn-secondary" onclick="closeGenerateModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Generate Bill</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Update Payment Modal -->
+    <div id="paymentModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 class="modal-title">Update Payment Status</h2>
+                <button class="modal-close" onclick="closePaymentModal()">&times;</button>
+            </div>
+            <form id="paymentForm" onsubmit="handlePayment(event)">
+                <div class="form-group">
+                    <label class="form-label">Payment Status *</label>
+                    <select name="payment_status" class="form-control form-select" required>
+                        <option value="Pending">Pending</option>
+                        <option value="Paid">Paid</option>
+                        <option value="Partially Paid">Partially Paid</option>
+                        <option value="Cancelled">Cancelled</option>
+                    </select>
+                </div>
+                <div style="display: flex; gap: 1rem; justify-content: flex-end;">
+                    <button type="button" class="btn btn-secondary" onclick="closePaymentModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Update Status</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <script src="js/api.js"></script>
+    <script>
+        let currentBillId = null;
+
+        // Load bills
+        async function loadBills() {
+            try {
+                const response = await BillingAPI.getAll();
+                const tbody = document.getElementById('billsTable');
+
+                if (!response.data || response.data.length === 0) {
+                    tbody.innerHTML = '<tr><td colspan="7" class="text-center">No bills found</td></tr>';
+                    return;
+                }
+
+                // Calculate stats
+                let totalRevenue = 0;
+                let pendingAmount = 0;
+                response.data.forEach(bill => {
+                    if (bill.payment_status === 'Paid') {
+                        totalRevenue += parseFloat(bill.total_amount);
+                    } else if (bill.payment_status === 'Pending') {
+                        pendingAmount += parseFloat(bill.total_amount);
+                    }
+                });
+
+                document.getElementById('totalRevenue').textContent = `₹${totalRevenue.toFixed(2)}`;
+                document.getElementById('pendingAmount').textContent = `₹${pendingAmount.toFixed(2)}`;
+
+                tbody.innerHTML = response.data.map(bill => `
+                    <tr>
+                        <td>${bill.bill_id}</td>
+                        <td>${bill.patient_name || 'N/A'}</td>
+                        <td>₹${bill.total_amount}</td>
+                        <td><span class="badge ${getPaymentBadge(bill.payment_status)}">${bill.payment_status}</span></td>
+                        <td>${bill.payment_date ? formatDate(bill.payment_date) : '-'}</td>
+                        <td>${bill.discharge_date ? formatDate(bill.discharge_date) : '-'}</td>
+                        <td>
+                            <button class="btn btn-sm btn-primary" onclick="updatePayment(${bill.bill_id})">Update</button>
+                            <button class="btn btn-sm btn-danger" onclick="deleteBill(${bill.bill_id})">Delete</button>
+                        </td>
+                    </tr>
+                `).join('');
+            } catch (error) {
+                showError('Failed to load bills: ' + error.message);
+            }
+        }
+
+        // Load completed appointments for bill generation
+        async function loadAppointments() {
+            try {
+                const response = await AppointmentAPI.getAll();
+                const select = document.getElementById('appointmentSelect');
+
+                const completedApts = response.data || [];
+
+                select.innerHTML = '<option value="">Select Appointment</option>' +
+                    completedApts.map(apt =>
+                        `<option value="${apt.appointment_id}">ID: ${apt.appointment_id} - ${apt.patient_name} - Dr. ${apt.doctor_name || 'N/A'} (${formatDate(apt.appointment_date)}) [${apt.status}]</option>`
+                    ).join('');
+            } catch (error) {
+                showError('Failed to load appointments: ' + error.message);
+            }
+        }
+
+        // Get payment status badge
+        function getPaymentBadge(status) {
+            switch (status) {
+                case 'Paid': return 'badge-success';
+                case 'Pending': return 'badge-warning';
+                case 'Partially Paid': return 'badge-primary';
+                case 'Cancelled': return 'badge-danger';
+                default: return 'badge-secondary';
+            }
+        }
+
+        // Show generate modal
+        function showGenerateModal() {
+            document.getElementById('generateForm').reset();
+            document.getElementById('generateModal').classList.add('active');
+            loadAppointments();
+        }
+
+        // Close generate modal
+        function closeGenerateModal() {
+            document.getElementById('generateModal').classList.remove('active');
+        }
+
+        // Handle generate bill
+        async function handleGenerate(event) {
+            event.preventDefault();
+            const formData = new FormData(event.target);
+            const appointmentId = formData.get('appointment_id');
+
+            try {
+                await BillingAPI.generate(appointmentId);
+                showSuccess('Bill generated successfully');
+                closeGenerateModal();
+                loadBills();
+            } catch (error) {
+                showError('Failed to generate bill: ' + error.message);
+            }
+        }
+
+        // Update payment
+        function updatePayment(id) {
+            currentBillId = id;
+            document.getElementById('paymentForm').reset();
+            document.getElementById('paymentModal').classList.add('active');
+        }
+
+        // Close payment modal
+        function closePaymentModal() {
+            document.getElementById('paymentModal').classList.remove('active');
+        }
+
+        // Handle payment update
+        async function handlePayment(event) {
+            event.preventDefault();
+            const formData = new FormData(event.target);
+            const data = Object.fromEntries(formData.entries());
+
+            try {
+                await BillingAPI.update(currentBillId, data);
+                showSuccess('Payment status updated successfully');
+                closePaymentModal();
+                loadBills();
+            } catch (error) {
+                showError('Failed to update payment: ' + error.message);
+            }
+        }
+
+        // Delete bill
+        async function deleteBill(id) {
+            if (!confirmAction('Are you sure you want to delete this bill?')) {
+                return;
+            }
+
+            try {
+                await BillingAPI.delete(id);
+                showSuccess('Bill deleted successfully');
+                loadBills();
+            } catch (error) {
+                showError('Failed to delete bill: ' + error.message);
+            }
+        }
+
+        // Initialize
+        document.addEventListener('DOMContentLoaded', () => {
+            loadBills();
+
+            // Close modals on outside click
+            document.getElementById('generateModal').addEventListener('click', (e) => {
+                if (e.target.classList.contains('modal')) closeGenerateModal();
+            });
+            document.getElementById('paymentModal').addEventListener('click', (e) => {
+                if (e.target.classList.contains('modal')) closePaymentModal();
+            });
+        });
+    </script>
+</body>
+
+</html>
